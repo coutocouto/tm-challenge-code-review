@@ -15,13 +15,15 @@ export class WeatherService {
     },
   };
 
+  private uri = 'https://api.api-ninjas.com/v1/weather';
+
   constructor(private readonly httpService: HttpService) {}
 
   async getCity(city: string): Promise<WeatherResponseData> {
     const { data } = await firstValueFrom(
       this.httpService
         .get<WeatherResponseData>(
-          `https://api.api-ninjas.com/v1/weather?city=${city}`,
+          `${this.uri}?city=${city}`,
           this.requestConfig,
         )
         .pipe(
@@ -47,7 +49,7 @@ export class WeatherService {
           firstValueFrom(
             this.httpService
               .get<WeatherResponseData>(
-                `https://api.api-ninjas.com/v1/weather?city=${city}`,
+                `${this.uri}?city=${city}`,
                 this.requestConfig,
               )
               .pipe(
