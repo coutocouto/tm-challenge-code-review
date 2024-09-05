@@ -1,69 +1,82 @@
-import { Injectable, InternalServerErrorException } from "@nestjs/common";
-import { WeatherResponseData } from "./weather.response.data";
-import { catchError, firstValueFrom } from "rxjs";
-import { AxiosError, AxiosHeaders } from "axios";
-import { HttpService } from "@nestjs/axios";
+import { HttpException, Injectable, Logger } from '@nestjs/common';
+import { WeatherResponseData } from './weather.response.data';
+import { catchError, firstValueFrom } from 'rxjs';
+import { AxiosError } from 'axios';
+import { HttpService } from '@nestjs/axios';
 
 @Injectable()
 export class WeatherService {
+  private readonly logger = new Logger(WeatherService.name);
 
-  constructor(private readonly httpService: HttpService) { }
-  
-  async getCity(city: any): Promise<WeatherResponseData> {
-  
-    try {
-      let rc = {
-        headers: {
-          'X-Api-Key': 'x7x1/ROfdQInbFu1j60j7g==qDJQLrZgbMHe5Azr',
-          'Content-Type': 'application/json'
-        }
-    };
-      const { data } = await firstValueFrom(
-        this.httpService.get<WeatherResponseData>(`https://api.api-ninjas.com/v1/weather?city=${city.city}`, rc).pipe(
-          catchError((error: AxiosError) => {
-            console.log(error.response.data);
-            throw error.response.data;
-          })
+  private readonly requestConfig = {
+    headers: {
+      'X-Api-Key': process.env.WEATHER_API_KEY,
+      'Content-Type': 'application/json',
+    },
+  };
+
+  constructor(private readonly httpService: HttpService) {}
+
+  async getCity(city: string): Promise<WeatherResponseData> {
+    const { data } = await firstValueFrom(
+      this.httpService
+        .get<WeatherResponseData>(
+          `https://api.api-ninjas.com/v1/weather?city=${city}`,
+          this.requestConfig,
         )
+        .pipe(
+          catchError((error: AxiosError) => {
+            this.logger.error(
+              `Error to get city ${city}, status: ${error.response?.status}, message: ${error.message}`,
+              error.stack,
+            );
+            throw new HttpException(
+              'Erro ao consultar cidade',
+              error.response?.status || 500,
+            );
+          }),
+        ),
+    );
+    return data;
+  }
+
+  async getCities(cities: string[]): Promise<Array<WeatherResponseData>> {
+    try {
+      const result = await Promise.allSettled(
+        cities.map((city: string) =>
+          firstValueFrom(
+            this.httpService
+              .get<WeatherResponseData>(
+                `https://api.api-ninjas.com/v1/weather?city=${city}`,
+                this.requestConfig,
+              )
+              .pipe(
+                catchError((error: AxiosError) => {
+                  this.logger.error(
+                    `Error to get city ${city}, status: ${error.response?.status}, message: ${error.message}`,
+                    error.stack,
+                  );
+                  throw new HttpException(
+                    'Erro ao consultar cidade',
+                    error.response?.status || 500,
+                  );
+                }),
+              ),
+          ),
+        ),
       );
-      return data;
-    } catch(err) {
-      throw new InternalServerErrorException({
-        descriptionOrOptions: err,
-      });
+
+      return result
+        .filter((response) => response.status === 'fulfilled')
+        .map((response: any) => response.value.data);
+    } catch (err) {
+      this.logger.error('Error fetching cities', err);
+      throw new HttpException('Erro ao consultar cidades', 500);
     }
   }
 
-  async getCities(cities: any): Promise<Array<WeatherResponseData>> {
-    let x: Array<WeatherResponseData>
-    cities.array.forEach(async element => {
-      try {
-        let rc = {
-          headers: {
-            'X-Api-Key': 'x7x1/ROfdQInbFu1j60j7g==qDJQLrZgbMHe5Azr',
-            'Content-Type': 'application/json'
-          }
-      };
-        const { data } = await firstValueFrom(
-          this.httpService.get<WeatherResponseData>(`https://api.api-ninjas.com/v1/weather?city=${city.city}`, rc).pipe(
-            catchError((error: AxiosError) => {
-              console.log(error.response.data);
-              throw error.response.data;
-            })
-          )
-        );
-        x.push(data);
-      } catch(err) {
-        throw new InternalServerErrorException({
-          descriptionOrOptions: err,
-        });
-      }
-    });
-    return x;
-  }
-
-  async getMedia(city: any): Promise<string> {
-    let response = this.getCity(city);
-    return `${(response.max_temp + await response.min_temp) / 2}`
+  async getAverage(city: any): Promise<string> {
+    const response = await this.getCity(city);
+    return `${(response.max_temp + response.min_temp) / 2}`;
   }
 }
